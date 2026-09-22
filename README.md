@@ -4,9 +4,7 @@
 
 **Soft decisions inside ordinary TypeScript.**
 
-Workflows typically combine exact logic with semantic questions answered by language models. Vybez embeds questions in code so you can weave soft and hard decisions seamlessly. A question returns a probability, a choice, or an ordered rating, so the rest of the program can keep using ordinary conditionals and functions. The default model provider is [Jev](https://docs.typesafe.ai/concepts/system-one).
-
-The model infers using a state object. Questions can point at parts of that state through refs, and several questions asked in the same tick are auto-batched into one request. TypeScript checks the shape of refs and the unions of choices as a useful consequence of keeping the types strict.
+Vybez embeds semantic rules in code, weaving model judgments with exact logic through ordinary conditionals and functions. Questions return probabilities, choices, or ordered ratings using [Jev](https://docs.typesafe.ai/concepts/system-one) by default. Typed refs connect questions to state, TypeScript validates refs and choices, and questions in the same tick are automatically batched.
 
 ## Why Vybez
 
