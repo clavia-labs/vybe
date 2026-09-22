@@ -8,7 +8,7 @@ export type DeterministicResolver = (
   question: ProviderQuestion,
 ) => ProviderAnswer | Promise<ProviderAnswer>;
 
-/** A tiny provider for tests, replay, and rules-based production handlers. */
+/** A tiny provider for tests, replay, and rules-based applications. */
 export class DeterministicProvider implements VybeProvider {
   readonly name = "deterministic";
   constructor(private readonly resolver: DeterministicResolver) {}
@@ -24,7 +24,7 @@ export class DeterministicProvider implements VybeProvider {
 
 export type MockValue = ProviderAnswer | number | string;
 
-/** Convenient map-based mock. A missing key is an error, so tests do not silently pass. */
+/** Convenient map-based provider. A missing key is an error, so tests do not silently pass. */
 export class MockProvider extends DeterministicProvider {
   constructor(
     values:

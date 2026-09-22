@@ -1,11 +1,7 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { createRef, isRef, refMetadata, type Refs } from "./refs.js";
 import type {
   ChoiceResult,
   DecisionRequest,
-  Handler,
   JsonObject,
   NativeAnswer,
   Provider,
@@ -18,7 +14,6 @@ import type {
 export type {
   ChoiceResult,
   DecisionRequest,
-  Handler,
   NativeAnswer,
   Provider,
   RateResult,
@@ -209,13 +204,16 @@ function normalizeRate<L extends string>(
   };
 }
 
-function sampleKey(probabilities: Record<string, number>): string | undefined {
+function sampleKey(
+  probabilities: Record<string, number>,
+  rng: () => number,
+): string | undefined {
   const entries = Object.entries(probabilities).filter(
     ([, value]) => Number.isFinite(value) && value > 0,
   );
   const total = entries.reduce((sum, [, value]) => sum + value, 0);
   if (total <= 0) return undefined;
-  let remaining = Math.random() * total;
+  let remaining = Math.min(1 - Number.EPSILON, Math.max(0, rng())) * total;
   for (const [key, value] of entries) {
     remaining -= value;
     if (remaining <= 0) return key;
@@ -223,37 +221,8 @@ function sampleKey(probabilities: Record<string, number>): string | undefined {
   return entries.at(-1)?.[0];
 }
 
-function applySampling(
-  answer: NativeAnswer,
-  request: DecisionRequest,
-  sampling: boolean | undefined,
-): NativeAnswer {
-  if (!sampling || request.kind === "is" || !answer.probabilities)
-    return answer;
-  const selected = sampleKey(answer.probabilities);
-  if (!selected) return answer;
-  return request.kind === "pick"
-    ? { ...answer, choice: selected }
-    : { ...answer, level: selected };
-}
-
-const handlerStorage = new AsyncLocalStorage<readonly Handler[]>();
 let configuredProvider: Provider | undefined;
 let configuredLLM: OpenResponses | undefined;
-
-function activeHandlers(stateHandlers: readonly Handler[] = []): Handler[] {
-  return [...(handlerStorage.getStore() ?? []), ...stateHandlers];
-}
-
-function registerHandler(handler: Handler): void {
-  handlerStorage.enterWith([...(handlerStorage.getStore() ?? []), handler]);
-}
-
-function unregisterHandler(handler: Handler): void {
-  const local = handlerStorage.getStore();
-  if (local)
-    handlerStorage.enterWith(local.filter((entry) => entry !== handler));
-}
 
 /** Configure the process default. State-level providers always take precedence. */
 export function config(
@@ -319,63 +288,32 @@ class Scheduler {
     const batch = this.pending.splice(0);
     if (!batch.length) return;
     try {
-      const handlers = activeHandlers(this.state.handlers);
-      const handled: Array<NativeAnswer | undefined> = [];
-      for (const item of batch) {
-        let answer: NativeAnswer | undefined;
-        for (
-          let index = handlers.length - 1;
-          index >= 0 && answer === undefined;
-          index -= 1
-        ) {
-          answer = await handlers[index]!.handle(item.request);
-        }
-        handled.push(answer);
-      }
-      const unanswered = batch
-        .map((item, index) => ({ item, index }))
-        .filter(({ index }) => handled[index] === undefined);
-      if (unanswered.length) {
-        const provider = this.state.provider ?? configuredProvider;
-        if (!provider)
-          throw new Error(
-            "No Vybe provider configured. Pass { provider } to state() or call configure().",
-          );
-        let answers: readonly NativeAnswer[];
-        if (provider.decideBatch) {
-          answers = await provider.decideBatch(
-            unanswered.map(({ item }) => item.request),
-          );
-        } else if (provider.decide) {
-          answers = await Promise.all(
-            unanswered.map(({ item }) => provider.decide!(item.request)),
-          );
-        } else {
-          throw new Error(
-            "Vybe provider must implement decide() or decideBatch()",
-          );
-        }
-        if (answers.length !== unanswered.length)
-          throw new Error(
-            `Vybe provider returned ${answers.length} answers for ${unanswered.length} questions`,
-          );
-        answers.forEach((answer, index) => {
-          handled[unanswered[index]!.index] = asAnswer(answer);
-        });
-      }
-      for (const [index, item] of batch.entries()) {
-        let answer = applySampling(
-          asAnswer(handled[index]),
-          item.request,
-          [...handlers]
-            .reverse()
-            .find((handler) => handler.sampling !== undefined)?.sampling,
+      const provider = this.state.provider ?? configuredProvider;
+      if (!provider)
+        throw new Error(
+          "No Vybe provider configured. Pass { provider } to state() or call config().",
         );
-        for (const handler of handlers) {
-          if (handler.after) answer = await handler.after(item.request, answer);
-        }
-        item.resolve(answer);
+      let answers: readonly NativeAnswer[];
+      if (provider.decideBatch) {
+        answers = await provider.decideBatch(
+          batch.map(({ request }) => request),
+        );
+      } else if (provider.decide) {
+        answers = await Promise.all(
+          batch.map(({ request }) => provider.decide!(request)),
+        );
+      } else {
+        throw new Error(
+          "Vybe provider must implement decide() or decideBatch()",
+        );
       }
+      if (answers.length !== batch.length)
+        throw new Error(
+          `Vybe provider returned ${answers.length} answers for ${batch.length} questions`,
+        );
+      answers.forEach((answer, index) => {
+        batch[index]!.resolve(asAnswer(answer));
+      });
     } catch (error) {
       batch.forEach((item) => item.reject(error));
     }
@@ -473,7 +411,6 @@ class StateImpl<T extends JsonObject = JsonObject> implements State<T> {
   constructor(
     readonly value: T,
     readonly provider?: Provider,
-    readonly handlers: readonly Handler[] = [],
   ) {
     this.scheduler = new Scheduler(this);
     const root = {} as Refs<T>;
@@ -538,101 +475,26 @@ export function state<T extends JsonObject>(
   value: T,
   options: StateOptions = {},
 ): State<T> {
-  return new StateImpl(value, options.provider, options.handlers);
+  return new StateImpl(value, options.provider);
 }
 
-/** A scoped deterministic handler for tests and local development. */
-export function mock(answers: Record<string, unknown>): Handler {
-  const handler: Handler = {
-    handle(request) {
-      if (!(request.text in answers)) return undefined;
-      return asAnswer(answers[request.text]);
-    },
-    dispose() {
-      unregisterHandler(handler);
-    },
-  };
-  registerHandler(handler);
-  return handler;
-}
+export type Random = () => number;
 
-function journalKey(request: DecisionRequest): string {
-  return JSON.stringify([
-    request.kind,
-    request.state,
-    request.text,
-    request.references,
-    request.locals,
-    request.rubric,
-  ]);
-}
-
-interface JournalEntry {
-  key: string;
-  request: DecisionRequest;
-  answer: NativeAnswer;
-}
-
-type DisposableHandler = Handler & Disposable & AsyncDisposable;
-
-function disposable(handler: Handler, close: () => void): DisposableHandler {
-  const result = handler as DisposableHandler;
-  result.dispose = close;
-  result[Symbol.dispose] = close;
-  result[Symbol.asyncDispose] = async () => close();
-  registerHandler(result);
-  return result;
-}
-
-/** Record provider answers as JSONL. The handler does not alter answers. */
-export function record(path: string): DisposableHandler {
-  const entries: JournalEntry[] = [];
-  let closed = false;
-  const handler: Handler = {
-    handle: () => undefined,
-    after(request, answer) {
-      if (!closed) entries.push({ key: journalKey(request), request, answer });
-      return answer;
-    },
-    dispose: () => undefined,
-  };
-  return disposable(handler, () => {
-    if (closed) return;
-    closed = true;
-    const parent = dirname(path);
-    if (parent !== ".") mkdirSync(parent, { recursive: true });
-    writeFileSync(
-      path,
-      entries.map((entry) => JSON.stringify(entry)).join("\n") +
-        (entries.length ? "\n" : ""),
-      "utf8",
-    );
-    unregisterHandler(handler);
-  });
-}
-
-/** Replay answers previously written by record(). */
-export function replay(path: string): DisposableHandler {
-  const entries = readFileSync(path, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as JournalEntry);
-  const answers = new Map(entries.map((entry) => [entry.key, entry.answer]));
-  const handler: Handler = {
-    handle(request) {
-      return answers.get(journalKey(request));
-    },
-    dispose: () => undefined,
-  };
-  return disposable(handler, () => unregisterHandler(handler));
-}
-
-/** Enable probability sampling for pick and rate answers in this scope. */
-export function sample(enabled = true): DisposableHandler {
-  const handler: Handler = {
-    handle: () => undefined,
-    sampling: enabled,
-    dispose: () => undefined,
-  };
-  return disposable(handler, () => unregisterHandler(handler));
+export function sample(probability: number, rng?: Random): boolean;
+export function sample<K extends string>(
+  result: ChoiceResult<K>,
+  rng?: Random,
+): K;
+export function sample<L extends string>(
+  result: RateResult<L>,
+  rng?: Random,
+): L;
+export function sample(
+  value: number | ChoiceResult<string> | RateResult<string>,
+  rng: Random = Math.random,
+): boolean | string {
+  if (typeof value === "number") return rng() < Math.max(0, Math.min(1, value));
+  const selected = sampleKey(value.probabilities, rng);
+  if (selected !== undefined) return selected;
+  return "choice" in value ? value.choice : value.level;
 }

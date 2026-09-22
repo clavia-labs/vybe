@@ -50,22 +50,8 @@ export interface Provider {
   ): Promise<readonly NativeAnswer[]> | readonly NativeAnswer[];
 }
 
-export interface Handler {
-  handle(
-    request: DecisionRequest,
-  ): NativeAnswer | undefined | Promise<NativeAnswer | undefined>;
-  after?(
-    request: DecisionRequest,
-    answer: NativeAnswer,
-  ): NativeAnswer | Promise<NativeAnswer>;
-  /** A sampling policy. The innermost defined value wins. */
-  sampling?: boolean;
-  dispose(): void;
-}
-
 export interface StateOptions {
   provider?: Provider;
-  handlers?: readonly Handler[];
 }
 
 export interface IsOptions {

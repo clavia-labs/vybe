@@ -1,22 +1,13 @@
-export {
-  config,
-  configure,
-  infer,
-  mock,
-  record,
-  replay,
-  sample,
-  state,
-} from "./runtime.js";
+export { config, configure, infer, sample, state } from "./runtime.js";
 export type {
   ChoiceResult,
   DecisionRequest,
-  Handler,
   OpenResponses,
   IsTag,
   NativeAnswer,
   PickTag,
   Provider,
+  Random,
   RateResult,
   RateTag,
   Rubric,

@@ -4,10 +4,8 @@ import {
   config,
   infer,
   JevProvider,
-  mock,
   PromptProvider,
-  record,
-  replay,
+  sample,
   state,
   type DecisionRequest,
   type NativeAnswer,
@@ -103,28 +101,30 @@ describe("vybe state", () => {
     expect((await query.native).providerField).toBe("kept");
   });
 
-  it("supports deterministic mock, recording, and replay handlers", async () => {
-    const handler = mock({ "Does this message request a refund?": 0.99 });
-    const first = state({ message: "Please refund this" });
-    expect(await first.is`Does this message request a refund?`).toBe(0.99);
-    handler.dispose();
-
-    const path = ".context/vybe-test.jsonl";
-    const recorder = record(path);
-    const live = state(
-      { message: "Please refund this" },
-      { provider: providerFor(() => ({ noul: 0.88 })) },
-    );
-    expect(await live.is`Does this message request a refund?`).toBe(0.88);
-    recorder.dispose();
-
-    const replayer = replay(path);
-    const replayed = state(
-      { message: "Please refund this" },
-      { provider: providerFor(() => ({ noul: 0.01 })) },
-    );
-    expect(await replayed.is`Does this message request a refund?`).toBe(0.88);
-    replayer.dispose();
+  it("samples plain results with a reproducible random source", () => {
+    expect(sample(0.8, () => 0.79)).toBe(true);
+    expect(sample(0.8, () => 0.8)).toBe(false);
+    expect(
+      sample(
+        {
+          choice: "billing" as const,
+          confidence: 0.8,
+          probabilities: { billing: 0.8, technical: 0.2 },
+        },
+        () => 0.9,
+      ),
+    ).toBe("technical");
+    expect(
+      sample(
+        {
+          score: 1.2,
+          level: "medium" as const,
+          confidence: 0.7,
+          probabilities: { low: 0.2, medium: 0.7, high: 0.1 },
+        },
+        () => 0.95,
+      ),
+    ).toBe("high");
   });
 
   it("bridges the provider adapter", async () => {

@@ -224,64 +224,30 @@ while (node.children) {
 }
 ```
 
-## Handlers and `using`
+## Sampling
 
-A handler decides what happens at a question: call the provider, read a recording, return a fixed answer, or sample. Handlers are scoped, and TypeScript's `using` declaration opens a scope for a block:
-
-```ts
-import { mock, record, replay, sample } from "vybe";
-
-test("duplicate charges are refunded", async () => {
-  using _ = mock({
-    "Does `ticket.messages[0].text` request a refund?": 0.97,
-    "Which team should handle `ticket`?": "billing",
-  });
-  expect(await route(ticket, order, policy)).toEqual(refunded);
-});
-
-// record every answer of a run, then replay it without calling the provider
-{
-  await using _ = record("runs/incident-42.jsonl");
-  await route(ticket, order, policy);
-}
-{
-  await using _ = replay("runs/incident-42.jsonl");
-  await route(ticket, order, policy);
-}
-```
-
-`sample()` draws each answer from its probability distribution instead of taking the most likely one. A choice with probabilities `0.6` and `0.4` takes the second branch four times in ten. Use it to explore the behavior of a program under uncertainty, to generate varied test runs, or to A/B a policy:
+The query results are plain data. Use `sample` as a free function when a workflow should explore the provider's probability distribution. Pass a random source when a run must be reproducible.
 
 ```ts
-{
-  using _ = sample();
-  await route(ticket, order, policy); // sampled
-  {
-    using _ = sample(false);
-    await route(ticket, order, policy); // most likely
-  }
-  await route(ticket, order, policy); // sampled again
-}
+sample(refund); // number -> boolean, true with probability refund
+sample(team); // Pick   -> "billing" | "technical" | "human"
+sample(sev); // Rate   -> "cosmetic" | "degraded" | "blocking"
+sample(team, rng); // seeded draw for reproducible runs
 ```
 
-`sample()` sets a decision policy; it keeps the provider's probability distribution and changes which choice or level is selected at the call site. The innermost policy wins, so `sample(false)` inside a sampling scope restores the most likely answer for its block.
-
-Scopes are tracked per async context with `AsyncLocalStorage` on Node and Bun, so two concurrent requests never see each other's handlers. Where no async context is available, pass handlers to `state(value, { handlers })`, which is also the portable form for library code.
-
-`using` is a convenience for tests, recordings, and overrides, because those have block-shaped lifetimes. It is not used for batching, which is defined by the state and the tick, not by a block.
+`sample` returns the existing `choice` or `level` union, so sampled values can be serialized directly into a recording, a Temporal payload, or a log. Other result operations can follow the same data-in, data-out shape.
 
 ## Providers
 
-The same question can be answered by different engines. Configuration chooses the provider; application code does not change.
+The same question can be answered by different engines. `config` selects the process default; `state(value, { provider })` selects a provider for one state and takes precedence over the process default.
 
 - **Jev** receives the state once and questions that reference it by path. It is the default for `is`, `pick`, and `rate`.
 - **Prompt-based models** receive the values inlined into the question text and a constrained output for the rubric.
-- **Deterministic handlers** answer from rules, caches, or recordings, for tests and replay.
-- **Human review** is a handler that suspends until a person answers.
+- **Custom providers** implement the small `Provider` interface and can call rules, caches, another model, or a human system.
 
 Refs make this possible. Because a ref carries the path and the value, the adapter can name the field or inline it, whichever the provider needs.
 
-Text generation and structured extraction are not part of the core. They want a prompt rather than a state and have a different cost model. If they are added later they will be separate verbs, not new result shapes on `is`, `pick`, and `rate`.
+Text generation uses `infer` and an Open Responses client. It is separate from state-backed decisions because it returns model text and has a different cost model.
 
 ## Optional transform
 
@@ -301,7 +267,7 @@ The [official SDK](https://docs.typesafe.ai/sdk/javascript) is the right choice 
 - references to state are typed refs, checked by the compiler;
 - answers unwrap to numbers and typed unions;
 - batching follows the state instead of a hand-built request;
-- handlers make tests, recordings, sampling, and overrides scoped and explicit;
+- results stay plain data for testing, recording, sampling, and durable payloads;
 - the same code runs against Jev or a prompt-based provider.
 
 If those properties do not help a project, the SDK alone is simpler.
