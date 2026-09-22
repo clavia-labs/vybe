@@ -4,11 +4,9 @@
 
 **Soft decisions inside ordinary TypeScript.**
 
-Workflows combine exact logic—comparisons, loops, database queries, and state transitions—with questions that are difficult to encode as rules, such as whether a message asks for a refund, which team should handle a ticket, or how severe an incident is.
+Workflows typically combine exact logic with semantic questions answered by language models. Vybez embeds questions in code so you can weave soft and hard decisions seamlessly. A question returns a probability, a choice, or an ordered rating, so the rest of the program can keep using ordinary conditionals and functions. The default model provider is [Jev](https://docs.typesafe.ai/concepts/system-one).
 
-Vybez puts those questions beside the code that uses their answers. A question returns a probability, a choice, or an ordered rating, so the rest of the program can keep using ordinary conditionals and functions. The default provider is [Jev](https://docs.typesafe.ai/concepts/system-one), which returns calibrated distributions instead of prose; other providers can use the same interface.
-
-The model reads a state value. Questions can point at parts of that state through refs, and several questions asked in the same tick share one request. TypeScript checks the shape of refs and the unions of choices as a useful consequence of keeping the state close to the code, while the main benefit is being able to move between model judgment and exact logic without changing the shape of the program.
+The model infers using a state object. Questions can point at parts of that state through refs, and several questions asked in the same tick are auto-batched into one request. TypeScript checks the shape of refs and the unions of choices as a useful consequence of keeping the types strict.
 
 ## Why Vybez
 
@@ -32,7 +30,7 @@ import { state } from "vybez";
 const s = state({ ticket, order, refund_policy: policy });
 const { ticket: t } = s.ref;
 
-const refund = await s.is`Is ${t.messages[0].text} requesting a refund?`;
+const refund = await s.is`${t.messages[0].text} is requesting a refund`;
 
 if (refund > 0.9 && order.charges.length > 1) {
   return issueRefund(order);
@@ -73,18 +71,18 @@ t.mesages; // error: Property 'mesages' does not exist
 Every question is asked of a state, and the whole state is what the model reads. A question does not have to mention a field at all:
 
 ```ts
-await s.is`Is the customer asking for a human agent?`;
+await s.is`the customer is asking for a human agent`;
 ```
 
 When a question should point at a specific part of the state, interpolate a ref. Refs are the only way a question refers to state. A ref carries both the path and the value, and the provider adapter decides how to render it. Jev receives the complete state unchanged and a question that names the field by path, which is how the [Jev docs](https://docs.typesafe.ai/primitives#reference-specific-fields) recommend asking. A separate prompt provider can inline the value when you choose a conventional text model. Application code is the same in both cases.
 
 ```ts
-s.is`Does ${t.messages[0].text} request a refund?`;
+s.is`${t.messages[0].text} requests a refund`;
 
 // Jev:     state = { ticket, order, refund_policy }
-//          instructions = "Does `ticket.messages[0].text` request a refund?"
+//          instructions = "`ticket.messages[0].text` requests a refund"
 //          (the state is sent separately, unchanged)
-// Prompt:  "Does \"I was charged twice for order A-104.\" request a refund?"
+// Prompt:  "\"I was charged twice for order A-104.\" requests a refund"
 ```
 
 A ref used in a question must belong to the state the question is asked of. To compare two things, put both in one state, which is also what Jev needs, since it reads one state per request. `state` accepts any JSON object; wrap a plain string or array in an object so it has a name to reference.
@@ -95,25 +93,23 @@ Three methods on the state map one to one onto Jev's question types. Each is a t
 
 | Verb | Jev type | Result |
 | --- | --- | --- |
-| `` await s.is`...` `` | noul | `number` from `0` to `1`, the probability of yes |
+| `` await s.is`...` `` | noul | `number` from `0` to `1`, the probability that the predicate holds |
 | ``await s.pick`...`(options)`` | choice | `{ choice, confidence, probabilities }` with `choice` typed as the union of option keys |
 | ``await s.rate`...`(levels)`` | score | `{ score, level, confidence, probabilities }` with `level` typed as the union of level names |
 
 ```ts
-const refund = await s.is`Does ${t.messages[0].text} request a refund?`;
+const refund = await s.is`${t.messages[0].text} requests a refund`;
 
-const credential = await s.is`Does ${t.messages[0].text} request a credential?`(
-  {
-    true: {
-      what: "Asks for a password, token, or key",
-      examples: ["send me the API key"],
-    },
-    false: {
-      what: "Mentions a credential without asking for it",
-      examples: ["I reset my password"],
-    },
+const credential = await s.is`${t.messages[0].text} requests a credential`({
+  true: {
+    what: "Asks for a password, token, or key",
+    examples: ["send me the API key"],
   },
-);
+  false: {
+    what: "Mentions a credential without asking for it",
+    examples: ["I reset my password"],
+  },
+});
 
 const team = await s.pick`Which team should handle ${t}?`({
   billing: {
@@ -201,7 +197,7 @@ Sometimes a question needs data that is not part of the shared state: a record t
       "description": "The identifier printed on the invoice."
     },
     "extracted_value": "4471",
-    "question": "Does `extracted_value` match the `field`?"
+    "question": "`extracted_value` matches the `field`"
   }
 }
 ```
@@ -209,7 +205,7 @@ Sometimes a question needs data that is not part of the shared state: a record t
 In Vybez, interpolate a one-key object literal. The key is the name; the value is the data:
 
 ```ts
-await s.is`Does ${{ extracted_value }} match ${{ field }}?`;
+await s.is`${{ extracted_value }} matches ${{ field }}`;
 ```
 
 That renders to the instructions object above for Jev, and inlines the values for a prompt provider. Question-local data goes in the instructions rather than the state so that many questions with different local data can still share one state and one request.
@@ -222,8 +218,8 @@ Jev answers every question in one request in parallel, and adding questions bare
 
 ```ts
 const [refund, urgent, team] = await Promise.all([
-  s.is`Does ${t.messages[0].text} request a refund?`,
-  s.is`Does ${t} describe an outage?`,
+  s.is`${t.messages[0].text} requests a refund`,
+  s.is`${t} describes an outage`,
   s.pick`Which team should handle ${t}?`(teams),
 ]);
 ```
