@@ -2,6 +2,7 @@ export { config, configure, infer, sample, state } from "./runtime.js";
 export type {
   ChoiceResult,
   DecisionRequest,
+  InferTag,
   OpenResponses,
   IsTag,
   NativeAnswer,

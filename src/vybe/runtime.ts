@@ -235,15 +235,41 @@ export function config(
 /** @deprecated Use `config({ provider })`. */
 export const configure = config;
 
-/** Run a conventional text-generation model through an Open Responses client. */
-export async function infer(
-  strings: TemplateStringsArray,
-  ...values: readonly unknown[]
+async function runInfer(
+  input: string,
+  state?: JsonObject,
+  locals: readonly { name: string; value: unknown }[] = [],
 ): Promise<string> {
   if (!configuredLLM)
     throw new Error(
       "No LLM configured for infer(). Pass { llm } to config() before calling infer().",
     );
+  const context = [
+    state === undefined ? "" : `\n\nState:\n${JSON.stringify(state, null, 2)}`,
+    locals.length === 0
+      ? ""
+      : `\n\nQuestion data:\n${JSON.stringify(
+          Object.fromEntries(locals.map(({ name, value }) => [name, value])),
+          null,
+          2,
+        )}`,
+  ].join("");
+  const response = await configuredLLM.responses.create({
+    ...(configuredLLM.model === undefined
+      ? {}
+      : { model: configuredLLM.model }),
+    input: `${input}${context}`,
+  });
+  if (typeof response.output_text !== "string")
+    throw new Error("Open Responses provider returned no output_text");
+  return response.output_text;
+}
+
+/** Run a conventional text-generation model without state. Prefer `state().infer`. */
+export async function infer(
+  strings: TemplateStringsArray,
+  ...values: readonly unknown[]
+): Promise<string> {
   let input = "";
   for (let index = 0; index < strings.length; index += 1) {
     input += strings[index] ?? "";
@@ -252,15 +278,7 @@ export async function infer(
       input += typeof value === "string" ? value : JSON.stringify(value);
     }
   }
-  const response = await configuredLLM.responses.create({
-    ...(configuredLLM.model === undefined
-      ? {}
-      : { model: configuredLLM.model }),
-    input,
-  });
-  if (typeof response.output_text !== "string")
-    throw new Error("Open Responses provider returned no output_text");
-  return response.output_text;
+  return runInfer(input);
 }
 
 class Scheduler {
@@ -375,10 +393,15 @@ export interface State<T extends JsonObject> {
   readonly is: IsTag;
   readonly pick: PickTag;
   readonly rate: RateTag;
+  readonly infer: InferTag;
 }
 
 export interface IsTag {
   (strings: TemplateStringsArray, ...values: TemplateValues): IsQuestion;
+}
+
+export interface InferTag {
+  (strings: TemplateStringsArray, ...values: TemplateValues): Promise<string>;
 }
 
 export interface PickTag {
@@ -423,6 +446,13 @@ class StateImpl<T extends JsonObject = JsonObject> implements State<T> {
     strings: TemplateStringsArray,
     ...values: TemplateValues
   ) => callableIs(this, buildQuestion(strings, values, this))) as IsTag;
+  readonly infer: InferTag = ((
+    strings: TemplateStringsArray,
+    ...values: TemplateValues
+  ) => {
+    const question = buildQuestion(strings, values, this);
+    return runInfer(question.text, this.value, question.locals);
+  }) as InferTag;
   readonly pick: PickTag = ((
     strings: TemplateStringsArray,
     ...values: TemplateValues

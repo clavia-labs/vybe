@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   asProvider,
   config,
-  infer,
   JevProvider,
   PromptProvider,
   sample,
@@ -40,10 +39,13 @@ describe("vybe state", () => {
       },
     });
 
-    expect(await infer`Summarize ${"this ticket"}`).toBe("A concise answer");
+    const support = state({ ticket: "this ticket" });
+    expect(await support.infer`Summarize ${support.ref.ticket}`).toBe(
+      "A concise answer",
+    );
     expect(request).toEqual({
       model: "test-model",
-      input: "Summarize this ticket",
+      input: expect.stringContaining('State:\n{\n  "ticket": "this ticket"\n}'),
     });
   });
 

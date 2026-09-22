@@ -144,20 +144,21 @@ const severity = await s.rate`How severe is the problem in ${t}?`([
 const urgency = await s.rate`How urgent is ${t}?`(["low", "medium", "high"]);
 ```
 
-For ordinary text generation, use `infer`. It is separate from `is`, `pick`, and `rate`: it returns model text and requires an [Open Responses](https://www.openresponses.org/) client configured with `config`. Calling it without one fails instead of silently using the Jev decision provider.
+For ordinary text generation, use `s.infer`. It reads the same state and refs as `is`, `pick`, and `rate`, returns model text, and requires an [Open Responses](https://www.openresponses.org/) client configured with `config`. Calling it without one fails instead of silently using the Jev decision provider.
 
 ```ts
 import OpenAI from "openai";
-import { config, infer } from "vybez";
+import { config, state } from "vybez";
 
 config({
   llm: {
-    model: "gpt-5-mini",
+    model: "gpt-5.6-luna",
     responses: new OpenAI().responses,
   },
 });
 
-const reply = await infer`Write a concise reply to this ticket:\n${ticket}`;
+const s = state({ ticket });
+const reply = await s.infer`Write a concise reply to ${s.ref.ticket}`;
 ```
 
 Every question is also an escape hatch to the provider response. Keep the query before awaiting it when you need model metadata, usage, or fields that Vybez does not normalize:
@@ -264,29 +265,6 @@ The same question can be answered by different engines. `config` selects the pro
 Refs make this possible. Because a ref carries the path and the value, the adapter can name the field or inline it, whichever the provider needs.
 
 Text generation uses `infer` and an Open Responses client. It is separate from state-backed decisions because it returns model text and has a different cost model.
-
-## Optional transform
-
-Nothing above needs a build step. An optional `"use vybez"` directive and a syntax-only transform can add three things for functions that opt in:
-
-- hoist independent questions above earlier `await`s so they join one request;
-- assign stable site IDs from file, function, and question text for tracing and caching;
-- report soft-site diagnostics in the editor, such as the last observed probability.
-
-The transform never changes the meaning of the runtime API.
-
-## Why not the Jev SDK directly
-
-The [official SDK](https://docs.typesafe.ai/sdk/javascript) is the right choice when a program only needs to make one request and read one response. Vybez is a small authoring layer for programs that weave judgment through ordinary control flow:
-
-- questions live beside the code that uses their answers;
-- references to state are typed refs, checked by the compiler;
-- answers unwrap to numbers and typed unions;
-- batching follows the state instead of a hand-built request;
-- results stay plain data for testing, recording, sampling, and durable payloads;
-- the same code runs against Jev or a prompt-based provider.
-
-If those properties do not help a project, the SDK alone is simpler.
 
 ## Configuration
 
