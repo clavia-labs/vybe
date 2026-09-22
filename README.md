@@ -1,4 +1,6 @@
-# Vybe
+# Vibeflow
+
+[![npm version](https://img.shields.io/npm/v/vibeflow)](https://www.npmjs.com/package/vibeflow)
 
 **Mixing soft and hard logic for workflows.**
 
@@ -6,9 +8,16 @@ Vybe lets ordinary TypeScript execute semantic decisions ergonomically, allowing
 
 Vybe is model provider neutral; the current default is backed by [Jev](https://docs.typesafe.ai/concepts/system-one), a calibrated decision model, and every reference to state is checked by the TypeScript compiler.
 
-```ts
-import { state } from "vybe";
+```sh
+bun add vibeflow
+# or
+npm install vibeflow
+```
 
+```ts
+import { state } from "vibeflow";
+
+// Define the state to infer over
 const s = state({ ticket, order, refund_policy: policy });
 const { ticket: t } = s.ref;
 
@@ -132,7 +141,7 @@ For ordinary text generation, use `infer`. It is separate from `is`, `pick`, and
 
 ```ts
 import OpenAI from "openai";
-import { config, infer } from "vybe";
+import { config, infer } from "vibeflow";
 
 config({
   llm: {
@@ -277,7 +286,7 @@ If those properties do not help a project, the SDK alone is simpler.
 Vybe configures Jev by default. Set `TYPESAFE_API_KEY` and import `config` only when you need to replace the backing provider:
 
 ```ts
-import { config, PromptProvider } from "vybe";
+import { config, PromptProvider } from "vibeflow";
 
 config({
   provider: new PromptProvider({
@@ -290,13 +299,7 @@ The provider can also be selected per state with `state(value, { provider })`, w
 
 ## Installation and status
 
-The API in this document is implemented in this checkout. It is an early package and is not published yet.
-
-```sh
-bun add vybe
-# or
-npm install vybe
-```
+The API in this document is implemented in this checkout.
 
 The package is built for Bun and modern TypeScript. `bun run check`, `bun test`, and `bun run build` are the repository checks. The Jev provider reads `TYPESAFE_API_KEY` from the environment; pass an explicit key to `jev({ apiKey })` when preferred.
 
@@ -304,4 +307,4 @@ The original JevScript compiler prototype has been removed. Vybe keeps the autho
 
 ## License
 
-TBD.
+MIT © 2026 Henry Mao
