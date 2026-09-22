@@ -1,4 +1,14 @@
-export { config, configure, infer, sample, state } from "./runtime.js";
+export {
+  config,
+  configure,
+  infer,
+  is,
+  pick,
+  rate,
+  sample,
+  state,
+  useState,
+} from "./runtime.js";
 export type {
   ChoiceResult,
   DecisionRequest,
@@ -13,6 +23,7 @@ export type {
   RateTag,
   Rubric,
   State,
+  ScopedState,
   StateOptions,
 } from "./runtime.js";
 export type {

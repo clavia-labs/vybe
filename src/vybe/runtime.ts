@@ -1,4 +1,5 @@
 import { createRef, isRef, refMetadata, type Refs } from "./refs.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ChoiceResult,
   DecisionRequest,
@@ -223,6 +224,16 @@ function sampleKey(
 
 let configuredProvider: Provider | undefined;
 let configuredLLM: OpenResponses | undefined;
+const currentStateStorage = new AsyncLocalStorage<StateImpl | undefined>();
+
+function currentState(): StateImpl {
+  const state = currentStateStorage.getStore();
+  if (!state)
+    throw new Error(
+      "No current state. Use useState(value) or call the verb on an explicit state.",
+    );
+  return state;
+}
 
 /** Configure the process default. State-level providers always take precedence. */
 export function config(
@@ -266,20 +277,10 @@ async function runInfer(
 }
 
 /** Run a conventional text-generation model without state. Prefer `state().infer`. */
-export async function infer(
+export const infer: InferTag = ((
   strings: TemplateStringsArray,
-  ...values: readonly unknown[]
-): Promise<string> {
-  let input = "";
-  for (let index = 0; index < strings.length; index += 1) {
-    input += strings[index] ?? "";
-    if (index < values.length) {
-      const value = values[index];
-      input += typeof value === "string" ? value : JSON.stringify(value);
-    }
-  }
-  return runInfer(input);
-}
+  ...values: TemplateValues
+) => currentState().infer(strings, ...values)) as InferTag;
 
 class Scheduler {
   private pending: Array<{
@@ -507,6 +508,42 @@ export function state<T extends JsonObject>(
 ): State<T> {
   return new StateImpl(value, options.provider);
 }
+
+export type ScopedState<T extends JsonObject> = State<T> & Disposable;
+
+export function useState<T extends JsonObject>(
+  value: T,
+  options: StateOptions = {},
+): ScopedState<T> {
+  const scoped = new StateImpl(value, options.provider);
+  const previous = currentStateStorage.getStore();
+  let disposed = false;
+  currentStateStorage.enterWith(scoped);
+  Object.defineProperty(scoped, Symbol.dispose, {
+    configurable: false,
+    value: () => {
+      if (disposed) return;
+      disposed = true;
+      currentStateStorage.enterWith(previous);
+    },
+  });
+  return scoped as unknown as ScopedState<T>;
+}
+
+export const is: IsTag = ((
+  strings: TemplateStringsArray,
+  ...values: TemplateValues
+) => currentState().is(strings, ...values)) as IsTag;
+
+export const pick: PickTag = ((
+  strings: TemplateStringsArray,
+  ...values: TemplateValues
+) => currentState().pick(strings, ...values)) as PickTag;
+
+export const rate: RateTag = ((
+  strings: TemplateStringsArray,
+  ...values: TemplateValues
+) => currentState().rate(strings, ...values)) as RateTag;
 
 export type Random = () => number;
 

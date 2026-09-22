@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
   asProvider,
   config,
+  is,
   JevProvider,
   PromptProvider,
   sample,
   state,
+  useState,
   type DecisionRequest,
   type NativeAnswer,
   type Provider,
@@ -25,6 +27,15 @@ function providerFor(
 }
 
 describe("vybe state", () => {
+  it("uses top-level verbs inside a scoped current state", async () => {
+    using s = useState(
+      { ticket: { message: "Please refund this" } },
+      { provider: providerFor(() => ({ noul: 0.91 })) },
+    );
+
+    expect(await is`${s.ref.ticket.message} requests a refund`).toBe(0.91);
+  });
+
   it("uses an Open Responses client for infer", async () => {
     let request: { model?: string; input: string } | undefined;
     config({

@@ -24,19 +24,18 @@ npm install vybez
 ```
 
 ```ts
-import { state } from "vybez";
+import { is, pick, useState } from "vybez";
 
-// Define the state to infer over
-const s = state({ ticket, order, refund_policy: policy });
+using s = useState({ ticket, order, refund_policy: policy });
 const { ticket: t } = s.ref;
 
-const refund = await s.is`${t.messages[0].text} is requesting a refund`;
+const refund = await is`${t.messages[0].text} is requesting a refund`;
 
 if (refund > 0.9 && order.charges.length > 1) {
   return issueRefund(order);
 }
 
-const team = await s.pick`Which team should handle ${t}?`({
+const team = await pick`Which team should handle ${t}?`({
   billing: "Charges, invoices, and refunds",
   technical: "Bugs, outages, and integrations",
   human: "Needs human review",
@@ -58,7 +57,9 @@ switch (team.choice) {
 
 ## State and refs
 
-`state(value)` takes a JSON object and returns a **state**: an object with the verbs `is`, `pick`, and `rate`, and a `ref` property holding one **ref** per key of the value. A ref names one part of the state for a question. `s.ref.ticket.messages[0].text` points at that field, while preserving its value and path for the provider. Keeping refs under `ref` means a state key can be named anything, including `is`, and the compiler can catch a misspelled field as a useful bonus.
+`state(value)` takes a JSON object and returns a **state**: an object with the verbs `is`, `pick`, `rate`, and `infer`, plus a `ref` property holding one **ref** per key of the value. A ref names one part of the state for a question. `s.ref.ticket.messages[0].text` points at that field, while preserving its value and path for the provider. Keeping refs under `ref` means a state key can be named anything, including `is`, and the compiler can catch a misspelled field as a useful bonus.
+
+`useState(value)` does the same thing and makes that state current for the scope. The top-level `is`, `pick`, `rate`, and `infer` tags use the current state, while `s.is`, `s.pick`, `s.rate`, and `s.infer` always select a state explicitly. `useState` is intended for a `using` declaration so the previous current state is restored when the scope ends.
 
 ```ts
 const s = state({ ticket, order, refund_policy });
@@ -71,7 +72,7 @@ t.mesages; // error: Property 'mesages' does not exist
 Every question is asked of a state, and the whole state is what the model reads. A question does not have to mention a field at all:
 
 ```ts
-await s.is`the customer is asking for a human agent`;
+await is`the customer is asking for a human agent`;
 ```
 
 When a question should point at a specific part of the state, interpolate a ref. Refs are the only way a question refers to state. A ref carries both the path and the value, and the provider adapter decides how to render it. Jev receives the complete state unchanged and a question that names the field by path, which is how the [Jev docs](https://docs.typesafe.ai/primitives#reference-specific-fields) recommend asking. A separate prompt provider can inline the value when you choose a conventional text model. Application code is the same in both cases.
