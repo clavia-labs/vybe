@@ -1,0 +1,42 @@
+{
+  "name": "vybe",
+  "version": "0.1.0",
+  "description": "Typed soft expressions for TypeScript",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "packageManager": "bun@1.4.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run typecheck && tsc -p tsconfig.json",
+    "check": "bun run lint && bun run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "demo": "bun run scripts/demo.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.2",
+    "oxlint": "^1.85.0",
+    "prettier": "^3.9.8",
+    "typescript": "7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

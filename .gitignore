@@ -1,0 +1,28 @@
+# Dependencies and package-manager caches
+node_modules/
+.bun/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test and tool output
+coverage/
+.nyc_output/
+.cache/
+.vite/
+.oxlintcache
+
+# Local environment and operating-system files
+.env*
+!.env.example
+.DS_Store
+*.log
+
+# Workspace notes and attachments
+.context/
+
+# Runtime snapshots
+*.snapshot.json
