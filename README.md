@@ -4,7 +4,7 @@
 
 **Soft decisions inside ordinary TypeScript.**
 
-Most programs are written in exact logic: comparisons, loops, database queries, and state transitions. Real workflows also contain questions that are difficult to encode as rules: whether a message asks for a refund, which team should handle a ticket, or how severe an incident is.
+Workflows combine exact logic—comparisons, loops, database queries, and state transitions—with questions that are difficult to encode as rules, such as whether a message asks for a refund, which team should handle a ticket, or how severe an incident is.
 
 Vybez puts those questions beside the code that uses their answers. A question returns a probability, a choice, or an ordered rating, so the rest of the program can keep using ordinary conditionals and functions. The default provider is [Jev](https://docs.typesafe.ai/concepts/system-one), which returns calibrated distributions instead of prose; other providers can use the same interface.
 
