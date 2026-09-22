@@ -1,6 +1,7 @@
 export {
   config,
   configure,
+  infer,
   mock,
   record,
   replay,
@@ -11,6 +12,7 @@ export type {
   ChoiceResult,
   DecisionRequest,
   Handler,
+  OpenResponses,
   IsTag,
   NativeAnswer,
   PickTag,

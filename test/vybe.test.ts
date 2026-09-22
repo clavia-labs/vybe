@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
   asProvider,
+  config,
+  infer,
   JevProvider,
   mock,
   PromptProvider,
@@ -26,6 +28,27 @@ function providerFor(
 }
 
 describe("vybe state", () => {
+  it("uses an Open Responses client for infer", async () => {
+    let request: { model?: string; input: string } | undefined;
+    config({
+      llm: {
+        model: "test-model",
+        responses: {
+          create: async (value) => {
+            request = value;
+            return { output_text: "A concise answer" };
+          },
+        },
+      },
+    });
+
+    expect(await infer`Summarize ${"this ticket"}`).toBe("A concise answer");
+    expect(request).toEqual({
+      model: "test-model",
+      input: "Summarize this ticket",
+    });
+  });
+
   it("keeps refs typed at runtime and batches a state tick", async () => {
     const provider = providerFor((request) =>
       request.kind === "is"
@@ -77,7 +100,7 @@ describe("vybe state", () => {
 
     expect((await query).level).toBe("medium");
     expect((await query).score).toBe(1.4);
-    expect((await query.native()).providerField).toBe("kept");
+    expect((await query.native).providerField).toBe("kept");
   });
 
   it("supports deterministic mock, recording, and replay handlers", async () => {
@@ -112,7 +135,7 @@ describe("vybe state", () => {
     const s = state({ message: "hello" }, { provider });
     const q = s.is`Is this a greeting?`;
     expect(await q).toBe(0.76);
-    expect((await q.native()).raw).toBe(true);
+    expect((await q.native).raw).toBe(true);
   });
 
   it("serializes a Jev batch and preserves the native answer", async () => {

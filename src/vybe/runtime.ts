@@ -30,6 +30,16 @@ export type { Ref, Refs } from "./refs.js";
 type TemplateValues = readonly unknown[];
 type RubricMap = Record<string, unknown>;
 
+export interface OpenResponses {
+  responses: {
+    create(request: { model?: string; input: string }): Promise<{
+      output_text?: string;
+      [key: string]: unknown;
+    }>;
+  };
+  model?: string;
+}
+
 interface BuiltQuestion {
   text: string;
   references: Array<{ path: string; value: unknown }>;
@@ -229,6 +239,7 @@ function applySampling(
 
 const handlerStorage = new AsyncLocalStorage<readonly Handler[]>();
 let configuredProvider: Provider | undefined;
+let configuredLLM: OpenResponses | undefined;
 
 function activeHandlers(stateHandlers: readonly Handler[] = []): Handler[] {
   return [...(handlerStorage.getStore() ?? []), ...stateHandlers];
@@ -245,12 +256,43 @@ function unregisterHandler(handler: Handler): void {
 }
 
 /** Configure the process default. State-level providers always take precedence. */
-export function config(options: { provider?: Provider } = {}): void {
-  configuredProvider = options.provider;
+export function config(
+  options: { provider?: Provider; llm?: OpenResponses } = {},
+): void {
+  if (options.provider !== undefined) configuredProvider = options.provider;
+  if (options.llm !== undefined) configuredLLM = options.llm;
 }
 
 /** @deprecated Use `config({ provider })`. */
 export const configure = config;
+
+/** Run a conventional text-generation model through an Open Responses client. */
+export async function infer(
+  strings: TemplateStringsArray,
+  ...values: readonly unknown[]
+): Promise<string> {
+  if (!configuredLLM)
+    throw new Error(
+      "No LLM configured for infer(). Pass { llm } to config() before calling infer().",
+    );
+  let input = "";
+  for (let index = 0; index < strings.length; index += 1) {
+    input += strings[index] ?? "";
+    if (index < values.length) {
+      const value = values[index];
+      input += typeof value === "string" ? value : JSON.stringify(value);
+    }
+  }
+  const response = await configuredLLM.responses.create({
+    ...(configuredLLM.model === undefined
+      ? {}
+      : { model: configuredLLM.model }),
+    input,
+  });
+  if (typeof response.output_text !== "string")
+    throw new Error("Open Responses provider returned no output_text");
+  return response.output_text;
+}
 
 class Scheduler {
   private pending: Array<{
@@ -349,7 +391,7 @@ class Query<T> implements PromiseLike<T> {
     private readonly convert: (answer: NativeAnswer) => T,
   ) {}
   private run(): Promise<T> {
-    if (!this.promise) this.promise = this.native().then(this.convert);
+    if (!this.promise) this.promise = this.native.then(this.convert);
     return this.promise;
   }
   // oxlint-disable-next-line unicorn/no-thenable -- Vybe queries intentionally integrate with await.
@@ -359,7 +401,7 @@ class Query<T> implements PromiseLike<T> {
   ): Promise<TResult1 | TResult2> {
     return this.run().then(onfulfilled ?? undefined, onrejected ?? undefined);
   }
-  native(): Promise<NativeAnswer> {
+  get native(): Promise<NativeAnswer> {
     if (!this.nativePromise)
       this.nativePromise = this.state.scheduler.enqueue(this.request);
     return this.nativePromise;
@@ -382,7 +424,11 @@ function callableIs(state: StateImpl, question: BuiltQuestion): IsQuestion {
     new Query(state, baseRequest(rubric), normalizeIs)) as IsQuestion;
   // oxlint-disable-next-line unicorn/no-thenable -- The tagged query is awaitable by design.
   callable.then = first.then.bind(first);
-  callable.native = first.native.bind(first);
+  Object.defineProperty(callable, "native", {
+    configurable: false,
+    enumerable: true,
+    get: () => first.native,
+  });
   return callable;
 }
 

@@ -1,44 +1,42 @@
 # Vybe
 
-**Typed judgment for TypeScript.**
+**Mixing soft and hard logic for workflows.**
 
-Vybe lets ordinary TypeScript ask questions that need judgment and get back values that move through normal code: compare them, switch on them, pass them to functions, or combine them with exact computation. Questions are answered by [Jev](https://docs.typesafe.ai/concepts/system-one), a calibrated decision model, and every reference to state is checked by the TypeScript compiler.
+Vybe lets ordinary TypeScript execute semantic decisions ergonomically, allowing you to weave between soft model predictions and hard code logic.
+
+Vybe is model provider neutral; the current default is backed by [Jev](https://docs.typesafe.ai/concepts/system-one), a calibrated decision model, and every reference to state is checked by the TypeScript compiler.
 
 ```ts
 import { state } from "vybe";
 
-export async function route(ticket: Ticket, order: Order, policy: string) {
-  const s = state({ ticket, order, refund_policy: policy });
-  const { ticket: t } = s.ref;
+const s = state({ ticket, order, refund_policy: policy });
+const { ticket: t } = s.ref;
 
-  const refund = await s.is`Does ${t.messages[0].text} request a refund?`;
+const refund = await s.is`Is ${t.messages[0].text} requesting a refund?`;
 
-  if (refund > 0.9 && order.charges.length > 1) {
-    return issueRefund(order);
-  }
+if (refund > 0.9 && order.charges.length > 1) {
+  return issueRefund(order);
+}
 
-  const team = await s.pick`Which team should handle ${t}?`({
-    billing: "Charges, invoices, and refunds",
-    technical: "Bugs, outages, and integrations",
-    human: "Needs human review",
-  });
+const team = await s.pick`Which team should handle ${t}?`({
+  billing: "Charges, invoices, and refunds",
+  technical: "Bugs, outages, and integrations",
+  human: "Needs human review",
+});
 
-  if (team.confidence < 0.5) {
+if (team.confidence < 0.5) {
+  return review(ticket);
+}
+
+switch (team.choice) {
+  case "billing":
+    return assign(ticket, "billing");
+  case "technical":
+    return assign(ticket, "technical");
+  case "human":
     return review(ticket);
-  }
-
-  switch (team.choice) {
-    case "billing":
-      return assign(ticket, "billing");
-    case "technical":
-      return assign(ticket, "technical");
-    case "human":
-      return review(ticket);
-  }
 }
 ```
-
-There is no request object, response envelope, or question ID in application code. State is a value. Questions are asked of it, and mention parts of it through typed refs. The kind of question is the verb.
 
 ## State and refs
 
@@ -130,18 +128,34 @@ const severity = await s.rate`How severe is the problem in ${t}?`([
 const urgency = await s.rate`How urgent is ${t}?`(["low", "medium", "high"]);
 ```
 
+For ordinary text generation, use `infer`. It is separate from `is`, `pick`, and `rate`: it returns model text and requires an [Open Responses](https://www.openresponses.org/) client configured with `config`. Calling it without one fails instead of silently using the Jev decision provider.
+
+```ts
+import OpenAI from "openai";
+import { config, infer } from "vybe";
+
+config({
+  llm: {
+    model: "gpt-5-mini",
+    responses: new OpenAI().responses,
+  },
+});
+
+const reply = await infer`Write a concise reply to this ticket:\n${ticket}`;
+```
+
 Every question is also an escape hatch to the provider response. Keep the query before awaiting it when you need model metadata, usage, or fields that Vybe does not normalize:
 
 ```ts
 const query = s.pick`Which team should handle ${t}?`(teams);
 const team = await query;
-const native = await query.native();
+const native = await query.native;
 
 console.log(team.choice);
 console.log(native); // Jev's original answer, including probabilities and usage fields
 ```
 
-The query is memoized, so reading `native()` after the typed result does not issue another request.
+`native` is a memoized promise. Reading it after the typed result does not issue another request, and reading it first participates in the same state batch.
 
 Rubrics accept exactly the [structure Jev does](https://docs.typesafe.ai/primitives/advanced): a description string, or an object with fields such as `what`, `not_for`, `examples`, `summary`, and `signals`. Vybe passes them through unchanged. The keys type the answer; the descriptions guide the model.
 
