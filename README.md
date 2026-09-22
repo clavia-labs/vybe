@@ -1,6 +1,6 @@
 # Vibeflow
 
-[![npm version](https://img.shields.io/npm/v/vibez)](https://www.npmjs.com/package/vibez)
+[![npm version](https://img.shields.io/npm/v/vybez)](https://www.npmjs.com/package/vybez)
 
 **Mixing soft and hard logic for workflows.**
 
@@ -9,13 +9,13 @@ Vybe lets ordinary TypeScript execute semantic decisions ergonomically, allowing
 Vybe is model provider neutral; the current default is backed by [Jev](https://docs.typesafe.ai/concepts/system-one), a calibrated decision model, and every reference to state is checked by the TypeScript compiler.
 
 ```sh
-bun add vibez
+bun add vybez
 # or
-npm install vibez
+npm install vybez
 ```
 
 ```ts
-import { state } from "vibez";
+import { state } from "vybez";
 
 // Define the state to infer over
 const s = state({ ticket, order, refund_policy: policy });
@@ -141,7 +141,7 @@ For ordinary text generation, use `infer`. It is separate from `is`, `pick`, and
 
 ```ts
 import OpenAI from "openai";
-import { config, infer } from "vibez";
+import { config, infer } from "vybez";
 
 config({
   llm: {
@@ -286,7 +286,7 @@ If those properties do not help a project, the SDK alone is simpler.
 Vybe configures Jev by default. Set `TYPESAFE_API_KEY` and import `config` only when you need to replace the backing provider:
 
 ```ts
-import { config, PromptProvider } from "vibez";
+import { config, PromptProvider } from "vybez";
 
 config({
   provider: new PromptProvider({
