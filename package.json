@@ -3,6 +3,14 @@
   "version": "0.2.0",
   "description": "Typed soft expressions for TypeScript",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clavia-labs/vybez.git"
+  },
+  "homepage": "https://github.com/clavia-labs/vybez#readme",
+  "bugs": {
+    "url": "https://github.com/clavia-labs/vybez/issues"
+  },
   "type": "module",
   "engines": {
     "bun": ">=1.4.0"
