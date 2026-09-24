@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/clavia-labs/vybez/compare/vybez-v0.2.1...vybez-v0.3.0) (2026-09-24)
+
+
+### Features
+
+* add 4x4 sudoku game to the Jev VM ([#8](https://github.com/clavia-labs/vybez/issues/8)) ([802fbf0](https://github.com/clavia-labs/vybez/commit/802fbf05c16c2be5c6d4c1e653835dc12323822f))
+* add Jev JSON state machine example ([#6](https://github.com/clavia-labs/vybez/issues/6)) ([a9886d1](https://github.com/clavia-labs/vybez/commit/a9886d1e1ff0cb93cc756911f6c51c6822fdc05f))
+
 ## [0.2.1](https://github.com/clavia-labs/vybez/compare/vybez-v0.2.0...vybez-v0.2.1) (2026-09-22)
 
 
