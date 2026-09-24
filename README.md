@@ -143,21 +143,21 @@ const severity = await s.rate`How severe is the problem in ${t}?`([
 const urgency = await s.rate`How urgent is ${t}?`(["low", "medium", "high"]);
 ```
 
-For ordinary text generation, use `s.infer`. It reads the same state and refs as `is`, `pick`, and `rate`, returns model text, and requires an [Open Responses](https://www.openresponses.org/) client configured with `config`. Calling it without one fails instead of silently using the Jev decision provider.
+For text generation, use `s.infer`. It reads the same state and refs as `is`, `pick`, and `rate`, and returns model text. The default client uses [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) through the OpenAI Responses API. Set `OPENAI_API_KEY` before execution. `OPENAI_MODEL` overrides the default model ID, `gpt-6-luna`. Jev handles `is`, `pick`, and `rate`.
 
 ```ts
-import OpenAI from "openai";
-import { config, state } from "vybez";
-
-config({
-  llm: {
-    model: "gpt-5.6-luna",
-    responses: new OpenAI().responses,
-  },
-});
+import { state } from "vybez";
 
 const s = state({ ticket });
 const reply = await s.infer`Write a concise reply to ${s.ref.ticket}`;
+```
+
+To configure the client explicitly, use `config({ llm: openai({ model: "gpt-6-luna" }) })`. Import `config` and `openai` from `vybez`. The client also accepts `apiKey`, `fetch`, `timeoutMs`, and `maxOutputTokens`. Defaults are 30 seconds and 2,048 output tokens. Incomplete responses fail before `infer` returns a string. `config({ llm })` also accepts a custom [Open Responses](https://www.openresponses.org/) client, including the OpenAI SDK through `{ model, responses: client.responses }`.
+
+With `OPENAI_API_KEY` configured, run the live example:
+
+```sh
+bun run infer "Write a short greeting"
 ```
 
 Every question is also an escape hatch to the provider response. Keep the query before awaiting it when you need model metadata, usage, or fields that Vybez does not normalize:
@@ -252,6 +252,18 @@ sample(team, rng); // seeded draw for reproducible runs
 ```
 
 `sample` returns the existing `choice` or `level` union, so sampled values can be serialized directly into a recording, a Temporal payload, or a log. Other result operations can follow the same data-in, data-out shape.
+
+## Jev virtual machine
+
+The [Jev virtual machine](examples/jev-vm/README.md) solves a prompt by letting Jev edit a JSON state, one step at a time. The state holds the task, the prompt's integers, variables, a working list, and the answer. Each question offers only valid edits and states their effect. Jev is the control flow. Every edit renders as jq, so a run replays without Jev.
+
+```sh
+# Requires TYPESAFE_API_KEY
+bun run vm --prompt "sort numbers 9 -1 5 7" --temperature 0 --jq .context/sort.jq
+
+# Replay the edits without model calls or API keys
+jq -n -f .context/sort.jq
+```
 
 ## Providers
 
