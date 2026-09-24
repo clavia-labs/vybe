@@ -2,8 +2,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { seededRandom } from "./sampling.js";
 import type { Json } from "./machine.js";
-import { runInterpreter, type Run } from "./run.js";
+import { runInterpreter, type Game, type Run } from "./run.js";
 import { setup } from "./setup.js";
+import {
+  isSolved,
+  PUZZLES,
+  SOLUTION,
+  sudokuGame,
+  wrongCells,
+  type Grid,
+  type SudokuQuestions,
+} from "./sudoku.js";
 
 type Case = {
   name: string;
@@ -11,6 +20,10 @@ type Case = {
   /** Returns whether the answer is correct, or null when unscored. */
   check: (answer: Json) => boolean | null;
   maxSteps?: number;
+  /** Replaces the general-purpose menu with the game's questions. */
+  game?: Game;
+  /** Extra detail to report, such as the number of wrong cells. */
+  detail?: (answer: Json) => Json;
 };
 
 const equals = (expected: Json) => (answer: Json) =>
@@ -102,6 +115,31 @@ export const CASES: Case[] = [
     prompt: "Return the sum of 4 8 15 16 23 42.",
     check: equals(108),
   },
+  // 4×4 sudoku: the general-purpose machine given the puzzle as text, then
+  // the sudoku game with three levels of question detail.
+  ...Object.entries(PUZZLES).flatMap(([level, puzzle]): Case[] => [
+    {
+      name: `sudoku-${level}-generic`,
+      prompt: `Solve this 4×4 sudoku. Rows, with 0 for empty cells: ${puzzle.map((cells) => cells.join(" ")).join(" / ")}. Return the solved grid as a list of rows.`,
+      check: (answer) =>
+        equals(SOLUTION)(answer) || equals(SOLUTION.flat())(answer),
+    },
+    ...(["plain", "context", "effects"] as SudokuQuestions[]).map(
+      (questions) => {
+        const game = sudokuGame(puzzle, questions);
+        return {
+          name: `sudoku-${level}-${questions}`,
+          prompt: game.task,
+          game,
+          check: (answer: Json) => isSolved(answer as Grid),
+          detail: (answer: Json) => ({
+            wrongCells: wrongCells(answer as Grid, puzzle),
+            of: puzzle.flat().filter((cell) => cell === 0).length,
+          }),
+        };
+      },
+    ),
+  ]),
 ];
 
 if (import.meta.main) {
@@ -127,11 +165,13 @@ if (import.meta.main) {
     infer: true,
   });
   const only = values.only?.split(",");
-  const jobs = CASES.filter(({ name }) => !only || only.includes(name)).flatMap(
-    (task) =>
-      values.temperature
-        .split(",")
-        .map((t) => ({ task, temperature: Number(t) })),
+  // Names or prefixes, such as sudoku or sudoku-easy.
+  const jobs = CASES.filter(
+    ({ name }) => !only || only.some((prefix) => name.startsWith(prefix)),
+  ).flatMap((task) =>
+    values.temperature
+      .split(",")
+      .map((t) => ({ task, temperature: Number(t) })),
   );
   await mkdir(values.out, { recursive: true });
   const results: Record<string, unknown>[] = [];
@@ -150,6 +190,7 @@ if (import.meta.main) {
             maxSteps: task.maxSteps ?? 60,
             rng: seededRandom(Number(values.seed)),
             ...(infer ? { infer } : {}),
+            ...(task.game ? { game: task.game } : {}),
           });
           await writeFile(
             `${values.out}/${task.name}-${temperature}.json`,
@@ -162,6 +203,7 @@ if (import.meta.main) {
           case: task.name,
           temperature,
           correct: run ? task.check(run.answer) : false,
+          ...(run && task.detail ? { detail: task.detail(run.answer) } : {}),
           status: run?.status ?? "error",
           edits: run?.steps.length,
           answer: run?.answer,
