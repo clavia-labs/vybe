@@ -1,9 +1,9 @@
 import { config } from "./vybe/index.js";
-import { jev } from "./providers/index.js";
+import { jev, openai } from "./providers/index.js";
 
-// The public package defaults to Jev. Applications can replace it with
-// config({ provider }) or pass a provider to state(...).
-config({ provider: jev() });
+// Jev selects finite answers; OpenAI generates text for infer().
+// Applications can replace either default through config().
+config({ provider: jev(), llm: openai() });
 
 export * from "./vybe/index.js";
 export {
@@ -14,6 +14,7 @@ export {
   ProviderAdapter,
   asProvider,
   jev,
+  openai,
 } from "./providers/index.js";
 export type {
   ProviderAnswer,
@@ -21,6 +22,7 @@ export type {
   VybeProvider,
   PromptProviderOptions,
   JevProviderOptions,
+  OpenAIOptions,
   DeterministicResolver,
   MockValue,
 } from "./providers/index.js";
