@@ -92,6 +92,19 @@ export type Run = {
   replayMatches: boolean | null;
 };
 
+/**
+ * A game replaces the general-purpose menu with its own questions. Its moves
+ * are ordinary edits, so a game still replays with jq.
+ */
+export type Game = {
+  initial: MachineState;
+  /** Shared instructions sent with every question. */
+  instructions: string;
+  menu: (state: MachineState) => MenuNode;
+  /** The run ends when this returns true; no completion question is asked. */
+  over: (state: MachineState) => boolean;
+};
+
 /** Call a tagged-template verb with text built at runtime. */
 function template(parts: string[]): TemplateStringsArray {
   return Object.assign([...parts], { raw: [...parts] });
@@ -105,6 +118,7 @@ export async function runInterpreter(
     temperature?: number;
     maxSteps?: number;
     infer?: InferText;
+    game?: Game;
     onStep?: (step: Step) => void | Promise<void>;
   } = {},
 ): Promise<Run> {
@@ -114,7 +128,9 @@ export async function runInterpreter(
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0)
     throw new RangeError("maxSteps must be a non-negative integer");
   const rng = options.rng ?? Math.random;
-  const initial = initialState(prompt);
+  const { game } = options;
+  const initial = game?.initial ?? initialState(prompt);
+  const role = game?.instructions ?? INTERPRETER_INSTRUCTIONS;
   let current = initial;
   const seen = new Set([stateKey(current)]);
   const history: string[] = [];
@@ -147,12 +163,11 @@ export async function runInterpreter(
     };
   };
 
-  while (steps.length < maxSteps) {
+  while (steps.length < maxSteps && !game?.over(current)) {
     const started = performance.now();
-    let node: MenuNode | Leaf = actionMenu(current, {
-      seen,
-      text: options.infer !== undefined,
-    });
+    let node: MenuNode | Leaf = game
+      ? game.menu(current)
+      : actionMenu(current, { seen, text: options.infer !== undefined });
     const view = { ...current, recentActions: history.slice(-6) };
     const path: string[] = [];
     const trail: { node: MenuNode; key: string }[] = [];
@@ -188,8 +203,8 @@ export async function runInterpreter(
       // The first question of a step shares one request with the
       // completion check, which is only meaningful once answer is set.
       const status =
-        !checked && current.answer !== null
-          ? context.is`Follow the shared instructions in ${{ interpreterRole: INTERPRETER_INSTRUCTIONS }}. Does ${context.ref.answer} already hold the complete, correct answer to ${context.ref.task}?`
+        !checked && !game && current.answer !== null
+          ? context.is`Follow the shared instructions in ${{ interpreterRole: role }}. Does ${context.ref.answer} already hold the complete, correct answer to ${context.ref.task}?`
           : null;
       const query =
         keys.length === 1
@@ -200,7 +215,7 @@ export async function runInterpreter(
                 `. ${node.question} Your answers so far for this edit are `,
                 ". Choose using the effect described for each option.",
               ]),
-              { interpreterRole: INTERPRETER_INSTRUCTIONS },
+              { interpreterRole: role },
               context.ref.path,
             )(choices);
       checked = true;
@@ -298,7 +313,7 @@ export async function runInterpreter(
   return {
     prompt,
     temperature,
-    status: completion ? "done" : "step-limit",
+    status: completion || game?.over(current) ? "done" : "step-limit",
     initial,
     final: current,
     answer: current.answer,

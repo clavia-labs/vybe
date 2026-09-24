@@ -64,6 +64,20 @@ Later questions choose the edit's details: the operator, operands, target field,
 
 Every question includes the shared instructions in [`run.ts`](run.ts), the state, `recentActions`, and `path`, the answers already given for the current edit.
 
+## Games
+
+A game replaces the general-purpose menu with its own questions. It supplies an initial state, shared instructions, a menu, and an end condition, and `runInterpreter` accepts it as `game`. Its moves are ordinary edits, so a game still replays with jq. The run ends when the game says so, without a completion question.
+
+[`sudoku.ts`](sudoku.ts) defines a 4×4 sudoku. The grid is `answer`, with 0 for empty cells. Each move asks two questions: which empty cell to fill, then which digit. A move fills one cell and cannot be undone, and the game ends when the grid is full. Three puzzles have 6, 9, and 11 empty cells and one solution each.
+
+The game asks its questions at three levels of detail:
+
+| Level | Cell options | Digit options |
+| --- | --- | --- |
+| `plain` | `row 1, column 3` | `Write 3 in row 1, column 3.` |
+| `context` | Also show the cell's row, column, and box | `Row 1 becomes [_, 2, 3, 4].` |
+| `effects` | Same as `context` | Also state whether the digit already appears in the cell's row, column, or box |
+
 ## Replay
 
 The program starts with the initial state and applies each edit in order:
@@ -91,6 +105,17 @@ The live evaluation runs every case in [`eval.ts`](eval.ts) at temperatures `0` 
 bun run vm:eval --out .context/jev-vm-eval
 ```
 
-`--only sort-4,gcd` selects cases, and `--temperature` accepts a comma-separated list. The cases include arithmetic, factorial, sorting, text, Collatz, Euclid's algorithm, Fibonacci, digit sums, maximum, reversal, counting, and sums. Each result reports whether `answer` is correct, the status, the number of edits, and whether jq replay matched.
+`--only sort-4,gcd` selects cases by name or prefix, such as `--only sudoku`, and `--temperature` accepts a comma-separated list. The cases include arithmetic, factorial, sorting, text, Collatz, Euclid's algorithm, Fibonacci, digit sums, maximum, reversal, counting, sums, and sudoku. Each result reports whether `answer` is correct, the status, the number of edits, and whether jq replay matched.
 
 In two full evaluations on September 23, 2026, with Jev 1.13.0, 25 and 23 of 32 scored runs were correct. Arithmetic, sorting, text, Euclid's algorithm, digit sums, maximum, and counting succeeded in every run. Factorial and reversal succeeded in half the runs. Sum, Collatz, and Fibonacci failed: these tasks require Jev to track its position across many repeated edits. Every run replayed exactly with jq. Temperature `0` selects the most likely choice, but Jev's probabilities can vary between requests, so repeated runs can differ.
+
+On September 24, 2026, the sudoku cases ran at temperatures `0` and `0.1` with Jev 1.13.0:
+
+| Questions | Solved | Moves that broke a sudoku rule |
+| --- | --- | --- |
+| General-purpose machine, puzzle as text | 0 of 6 | Did not fill the grid within 60 edits |
+| `plain` | 0 of 6 | 26 of 52 |
+| `context` | 0 of 6 | 25 of 52 |
+| `effects` | 6 of 6 | 0 of 52 |
+
+With `effects` questions, Jev chose a cell with exactly one legal digit in all 52 moves, although only 76% of empty cells had one at the time. Its cell choices rely on the row, column, and box facts that `context` questions also show. The difference is in the digit question. Given the row, column, and box, Jev does not reliably check whether a digit already appears in them. Given that check as a stated effect, it does not make a mistake. Every run replayed exactly with jq.
